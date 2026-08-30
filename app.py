@@ -3,14 +3,14 @@ recipe cards, quick filter, night swap, custom recipes, simple grocery list."""
 import os
 import streamlit as st
 from db_setup import build, DB_PATH, connect, FOOD_TYPES, PREF_LEVELS, PREF_LABELS, DIET_PRESETS
-import core, theme
+import core, theme, usda
 
 st.set_page_config(page_title="Harvest", page_icon="🍂", layout="wide")
 if not os.path.exists(DB_PATH): build()
 UP=os.path.join(os.path.dirname(__file__),"uploads"); os.makedirs(UP,exist_ok=True)
 
 ss=st.session_state
-ss.setdefault("plan_nights",[]); ss.setdefault("who",None)
+ss.setdefault("grid",[]); ss.setdefault("grid_meals",["dinner"]); ss.setdefault("who",None)
 conn=connect(); theme.inject()
 
 TYPE_LABELS={"red_meat":"Red meat","poultry":"Poultry","pork":"Pork","seafood":"Seafood",
@@ -81,13 +81,15 @@ with st.sidebar:
         if st.button("Add store") and nsx.strip(): core.add_store(conn,nsx.strip()); st.rerun()
 
 hero("Harvest","Household meal planning")
-tabs=st.tabs(["Plan","People","Recipes","Shopping","Receipts","Household"])
+tabs=st.tabs(["Plan","People","Recipes","Lookup","Shopping","Receipts","Household"])
 
-def cal_badge(rid):
-    per,cov=core.recipe_calories(conn, rid)
-    if per is None: return '<span class="pill">cal: —</span>'
-    flag="" if cov>=0.8 else " ~"
-    return f'<span class="pill">~{per} cal/serv{flag}</span>'
+def macro_badges(rid):
+    m=core.recipe_macros(conn, rid)
+    if m.get("kcal") is None: return '<span class="pill">cal: —</span>'
+    return (f'<span class="pill">~{m["kcal"]} cal</span>'
+            f'<span class="pill">P {m["protein"]}g</span>'
+            f'<span class="pill">C {m["carbs"]}g</span>'
+            f'<span class="pill">F {m["fat"]}g</span>')
 
 # ===================== PLAN =====================
 with tabs[0]:
@@ -95,50 +97,59 @@ with tabs[0]:
     if not active:
         st.info("Turn someone on in the sidebar to plan.")
     else:
-        c1,c2,c3,c4=st.columns([1.3,1,1,1])
-        mode=c1.radio("Meal style",["Together","Individual"],horizontal=True,
-            help="Together = one meal, per-person tweaks. Individual = each person their own dish.")
-        n=c2.slider("Nights",3,7,5)
-        quick=c3.toggle("Quick only", help="Meals about 20 min or less")
-        favs=c4.toggle("Favorites")
-        if st.button("🎲 Generate the week"):
-            ss["plan_nights"]=core.plan_week(conn,n=n,
-                mode="together" if mode=="Together" else "individual",
-                favorites_only=favs, quick_only=quick)
-        nights=ss["plan_nights"]
-        if not nights:
-            st.info("Pick options and generate a week.")
+        st.markdown("#### Plan your meals")
+        c1,c2=st.columns([1,2])
+        days=c1.slider("How many days?",1,7,3)
+        meals=c2.multiselect("Which meals?",["breakfast","lunch","dinner"],
+            default=ss["grid_meals"], help="Pick the slots you want to plan.")
+        ss["grid_meals"]=meals or ["dinner"]
+        c3,c4,c5=st.columns([1.4,1,1])
+        cz=c3.selectbox("Mood / cuisine",["Any"]+core.cuisines(conn),
+            help="Steer the whole plan toward a cuisine.")
+        quick=c4.toggle("Quick only",key="plan_quick")
+        favs=c5.toggle("Favorites",key="plan_favs")
+        if st.button("🎲 Generate meals"):
+            ss["grid"]=core.plan_grid(conn, days=days, meals=ss["grid_meals"],
+                cuisine=None if cz=="Any" else cz, quick_only=quick, favorites_only=favs)
+
+        grid=ss["grid"]
+        if not grid:
+            st.info("Pick your days and meals, then generate.")
         else:
-            all_r={r["id"]:r["name"] for r in core.recipes(conn)}
-            st.markdown("#### This week")
-            for i,nt in enumerate(nights):
-                with st.container():
-                    if nt["mode"]=="together":
-                        r=nt["recipe"]
-                        cc=st.columns([4,1])
-                        cc[0].markdown(f'<div class="card"><b>Night {i+1}</b> '
+            all_by_meal={m:{r["id"]:r["name"] for r in core.recipes(conn,meal=m)} for m in ["breakfast","lunch","dinner"]}
+            for di,day in enumerate(grid):
+                st.markdown(f"##### Day {di+1}")
+                cols=st.columns(len(day))
+                for ci,(meal,r) in enumerate(day.items()):
+                    with cols[ci]:
+                        if not r:
+                            st.markdown(f"*{meal}: none*"); continue
+                        st.markdown(f'<div class="card"><span class="pill veg">{meal}</span>'
                             f'<span class="pill cuisine">{r["cuisine"]}</span>'
-                            f'<span class="pill">{r["minutes"]} min</span>{cal_badge(r["id"])}<br>'
-                            f'<span style="font-size:1.15rem">{r["name"]}</span></div>',unsafe_allow_html=True)
-                        # swap control
-                        newid=cc[1].selectbox("swap",[r["id"]]+[x for x in all_r if x!=r["id"]],
-                            format_func=lambda x:all_r[x], key=f"swap_{i}", label_visibility="collapsed")
-                        if newid!=r["id"]:
-                            ss["plan_nights"][i]={"mode":"together","recipe":core.recipe_by_id(conn,newid)}; st.rerun()
-                    else:
-                        body="".join(f'<div style="margin-top:6px"><span class="pill on">{w}</span> {rr["name"]} '
-                                     f'<span class="small">{rr["minutes"]}min</span></div>'
-                                     for w,rr in nt["per_member"].items())
-                        st.markdown(f'<div class="card"><b>Night {i+1}</b> <span class="pill veg">individual</span>{body}</div>',unsafe_allow_html=True)
-            ids=core.plan_recipe_ids(nights)
+                            f'<span class="pill">{r["minutes"]}m</span><br>'
+                            f'<b>{r["name"]}</b><br>{macro_badges(r["id"])}</div>',unsafe_allow_html=True)
+                        bcols=st.columns(2)
+                        if bcols[0].button("🎲", key=f"rr_{di}_{meal}", help="Re-roll this meal"):
+                            used={x["id"] for d2 in grid for mm,x in d2.items() if mm==meal and x}
+                            newr=core.pick_one(conn, meal, exclude=used,
+                                cuisine=None if cz=="Any" else cz, quick_only=quick, favorites_only=favs)
+                            if newr: ss["grid"][di][meal]=newr; st.rerun()
+                        pick=bcols[1].selectbox("swap",["swap…"]+list(all_by_meal[meal].values()),
+                            key=f"sw_{di}_{meal}", label_visibility="collapsed")
+                        if pick!="swap…":
+                            rid=[k for k,v in all_by_meal[meal].items() if v==pick][0]
+                            ss["grid"][di][meal]=core.recipe_by_id(conn,rid); st.rerun()
+
+            ids=core.grid_recipe_ids(grid)
             st.markdown("#### 🛒 Grocery preview")
+            st.caption("Combined across every planned meal — no duplicates.")
             cur=None
             for row in core.grocery_items(conn,ids):
                 if row["aisle"]!=cur: cur=row["aisle"]; st.markdown(f"**{cur}**")
                 st.markdown(f"• {row['ingredient']}")
             store_opts={s["name"]:s["id"] for s in core.stores(conn)}
             tgt=st.selectbox("Add to store", list(store_opts))
-            if st.button("➕ Add week to shopping list"):
+            if st.button("➕ Add all to shopping list"):
                 core.push_items_to_list(conn, core.grocery_items(conn,ids), store_id=store_opts[tgt], added_by=ss["who"] or "")
                 st.success("Added to your shopping list.")
 
@@ -177,8 +188,8 @@ with tabs[2]:
     f1,f2,f3,f4=st.columns(4)
     cz=f1.selectbox("Cuisine",["All"]+core.cuisines(conn))
     ct=f2.selectbox("Type",["All"]+core.categories(conn))
-    qk=f3.toggle("Quick only")
-    fav=f4.toggle("⭐ Favorites")
+    qk=f3.toggle("Quick only",key="rec_quick")
+    fav=f4.toggle("⭐ Favorites",key="rec_favs")
     rlist=core.recipes(conn,favorites_only=fav,cuisine=cz,category=ct,quick_only=qk)
     st.caption(f"{len(rlist)} recipes")
     for r in rlist:
@@ -190,10 +201,17 @@ with tabs[2]:
         if b.button("★" if r["is_favorite"] else "☆", key=f"fav_{r['id']}"):
             core.toggle_favorite(conn,r["id"]); st.rerun()
         with st.expander("Recipe details"):
-            per,cov=core.recipe_calories(conn,r["id"])
-            if per: st.markdown(f"**~{per} calories per serving** <span class='small'>(USDA estimate)</span>",unsafe_allow_html=True)
-            else: st.markdown("<span class='small'>Calories unavailable (add a USDA key to enable)</span>",unsafe_allow_html=True)
-            st.markdown(f"**Serves {r['servings']} · {r['minutes']} min**")
+            m=core.recipe_macros(conn,r["id"])
+            if m.get("kcal") is not None:
+                mm=st.columns(4)
+                mm[0].metric("Calories",f"~{m['kcal']}")
+                mm[1].metric("Protein",f"{m['protein']}g")
+                mm[2].metric("Carbs",f"{m['carbs']}g")
+                mm[3].metric("Fat",f"{m['fat']}g")
+                st.caption("Per serving · USDA estimate")
+            else:
+                st.markdown("<span class='small'>Nutrition unavailable (add a USDA key to enable)</span>",unsafe_allow_html=True)
+            st.markdown(f"**Serves {r['servings']} · {r['minutes']} min · {r['meal']}**")
             st.markdown("**Ingredients**")
             for l in core.recipe_lines(conn,r["id"]):
                 tag="" if l["branch"]=="shared" else f" — *{l['branch'].replace('_branch','')}*"
@@ -207,10 +225,11 @@ with tabs[2]:
     st.divider()
     with st.expander("➕ Add your own recipe"):
         rn=st.text_input("Name",key="cr_n")
-        d1,d2,d3=st.columns(3)
+        d1,d2,d3,d4=st.columns(4)
         rcat=d1.text_input("Type","chicken",key="cr_cat")
         rcz=d2.text_input("Cuisine","American",key="cr_cz")
         rmin=d3.number_input("Minutes",5,180,25,key="cr_min")
+        rmeal=d4.selectbox("Meal",["dinner","lunch","breakfast"],key="cr_meal")
         rserv=st.number_input("Servings",1,12,2,key="cr_sv")
         st.caption("Food-type profile (helps targeting) — how much each type features:")
         tp=pref_editor_profile("crp")
@@ -223,11 +242,31 @@ with tabs[2]:
                 p=[x.strip() for x in line.split("|")]
                 if p and p[0]:
                     items.append((p[0], p[1] if len(p)>1 else "", (p[2]+"_branch") if len(p)>2 and p[2] and p[2]!="shared" else "shared"))
-            core.add_recipe(conn,rn.strip(),rcat,rcz,int(rserv),int(rmin),tp,steps,items)
+            core.add_recipe(conn,rn.strip(),rcat,rcz,int(rserv),int(rmin),tp,steps,items,meal=rmeal)
             st.success(f"Saved {rn}. Open its card to auto-calc calories."); st.rerun()
 
-# ===================== SHOPPING =====================
+# ===================== LOOKUP =====================
 with tabs[3]:
+    st.markdown("#### Food nutrition lookup")
+    st.caption("Type any food to see USDA nutrition. Adjust the amount to scale it.")
+    lc1,lc2=st.columns([2,1])
+    food=lc1.text_input("Food", placeholder="e.g. cheddar cheese, banana, chicken breast")
+    grams=lc2.number_input("Grams",1,2000,100,step=10)
+    if st.button("Look up") and food.strip():
+        res=usda.lookup(food.strip(), grams)
+        if not res:
+            st.warning("No match found (or USDA key not set). Try a simpler name.")
+        else:
+            st.markdown(f"**{res['desc']}** — per {res['grams']}g")
+            m1,m2,m3,m4=st.columns(4)
+            m1.metric("Calories",f"{res['kcal']}")
+            m2.metric("Protein",f"{res['protein']} g")
+            m3.metric("Carbs",f"{res['carbs']} g")
+            m4.metric("Fat",f"{res['fat']} g")
+            st.caption("Source: USDA FoodData Central. Values are per the amount shown.")
+
+# ===================== SHOPPING =====================
+with tabs[4]:
     st.markdown("#### Shared shopping list")
     store_opts={"All stores":None}|{s["name"]:s["id"] for s in core.stores(conn)}
     g1,g2,g3=st.columns(3)
@@ -263,7 +302,7 @@ with tabs[3]:
         st.code(core.list_as_text(conn,store_id=store_opts[spk]),language=None)
 
 # ===================== RECEIPTS =====================
-with tabs[4]:
+with tabs[5]:
     st.markdown("#### Log a receipt")
     r1,r2,r3=st.columns(3)
     rs=r1.selectbox("Store",[s["name"] for s in core.stores(conn)],key="rc_s")
@@ -301,7 +340,7 @@ with tabs[4]:
             if r["photo_path"] and os.path.exists(r["photo_path"]): st.image(r["photo_path"],width=260)
 
 # ===================== HOUSEHOLD =====================
-with tabs[5]:
+with tabs[6]:
     st.markdown("#### Household (non-food) items")
     hh=core.shopping_list(conn,kind="household")
     if hh:
