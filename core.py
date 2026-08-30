@@ -32,10 +32,11 @@ def set_member_active(c,name,a): c.execute("UPDATE members SET active=? WHERE na
 def remove_member(c,name): c.execute("DELETE FROM members WHERE name=?",(name,)); c.commit()
 
 # ---- recipes ----
-def recipes(c, favorites_only=False, cuisine=None, category=None, quick_only=False):
+def recipes(c, favorites_only=False, cuisine=None, category=None, quick_only=False, meal=None):
     q="SELECT * FROM recipes WHERE 1=1"; p=[]
     if favorites_only: q+=" AND is_favorite=1"
     if quick_only: q+=" AND is_quick=1"
+    if meal and meal!="All": q+=" AND meal=?"; p.append(meal)
     if cuisine and cuisine!="All": q+=" AND cuisine=?"; p.append(cuisine)
     if category and category!="All": q+=" AND category=?"; p.append(category)
     out=[]
@@ -53,11 +54,11 @@ def recipe_lines(c,rid):
     return [dict(r) for r in c.execute("""SELECT i.name ingredient,i.aisle,i.kind,ri.amount,ri.branch
         FROM recipe_ingredients ri JOIN ingredients i ON i.id=ri.ingredient_id WHERE ri.recipe_id=?""",(rid,))]
 
-def add_recipe(c,name,category,cuisine,servings,minutes,type_profile,steps,items,cal=None):
+def add_recipe(c,name,category,cuisine,servings,minutes,type_profile,steps,items,cal=None,meal="dinner"):
     quick=1 if minutes<=20 else 0
-    rid=c.execute("""INSERT INTO recipes(name,category,cuisine,servings,minutes,is_quick,is_custom,type_profile,steps,cal_per_serving)
-                     VALUES(?,?,?,?,?,?,1,?,?,?)""",
-                  (name,category,cuisine,servings,minutes,quick,json.dumps(type_profile),steps,cal)).lastrowid
+    rid=c.execute("""INSERT INTO recipes(name,category,cuisine,servings,minutes,meal,is_quick,is_custom,type_profile,steps,cal_per_serving)
+                     VALUES(?,?,?,?,?,?,?,1,?,?,?)""",
+                  (name,category,cuisine,servings,minutes,meal,quick,json.dumps(type_profile),steps,cal)).lastrowid
     for iname,amount,branch in items:
         row=c.execute("SELECT id FROM ingredients WHERE name=?",(iname,)).fetchone()
         if not row:
@@ -69,18 +70,27 @@ def add_recipe(c,name,category,cuisine,servings,minutes,type_profile,steps,items
 def delete_recipe(c,rid): c.execute("DELETE FROM recipes WHERE id=?",(rid,)); c.commit()
 
 # ---- USDA per-serving calories (cached in the recipes row once known) ----
-def recipe_calories(c, rid, force=False):
-    row=c.execute("SELECT cal_per_serving,servings FROM recipes WHERE id=?",(rid,)).fetchone()
-    if row["cal_per_serving"] is not None and not force:
-        return row["cal_per_serving"], 1.0
+def recipe_macros(c, rid):
+    """Return {kcal,protein,carbs,fat,coverage} per serving from USDA (live).
+    Caches kcal in the recipes row; macros are computed each call (cheap, cached
+    in usda module per process)."""
+    row=c.execute("SELECT servings FROM recipes WHERE id=?",(rid,)).fetchone()
     grams=[]
     for l in recipe_lines(c,rid):
         g,_=units.to_grams(l["amount"], l["ingredient"])
         if g: grams.append((l["ingredient"], g))
-    total,per,cov=usda.recipe_calories(grams, row["servings"] or 1)
-    if per is not None:
-        c.execute("UPDATE recipes SET cal_per_serving=? WHERE id=?",(per,rid)); c.commit()
-    return per, cov
+    m=usda.recipe_macros(grams, row["servings"] or 1)
+    if m.get("kcal") is not None:
+        c.execute("UPDATE recipes SET cal_per_serving=? WHERE id=?",(m["kcal"],rid)); c.commit()
+    return m
+
+def recipe_calories(c, rid, force=False):
+    """Back-compat: just the kcal + coverage."""
+    row=c.execute("SELECT cal_per_serving FROM recipes WHERE id=?",(rid,)).fetchone()
+    if row and row["cal_per_serving"] is not None and not force:
+        return row["cal_per_serving"], 1.0
+    m=recipe_macros(c,rid)
+    return m.get("kcal"), m.get("coverage",0.0)
 
 # ---- preference scoring ----
 def score_recipe_for_person(recipe, prefs):
@@ -126,6 +136,42 @@ def plan_week(c, n=5, mode="together", favorites_only=False, quick_only=False, s
         if len(picked)>=n: break
         if r not in picked: picked.append(r)
     return [{"mode":"together","recipe":r} for r in picked[:n]]
+
+
+# ---- meal-grid planning (breakfast/lunch/dinner over N days) ----
+def pick_one(c, meal, prefs_list=None, cuisine=None, quick_only=False, favorites_only=False, exclude=None):
+    """Choose one recipe for a meal slot, scored for the household, with a little
+    randomness. exclude = set of recipe ids to avoid (so re-roll gives something new)."""
+    import random
+    pool=recipes(c, meal=meal, cuisine=cuisine, quick_only=quick_only, favorites_only=favorites_only)
+    if exclude: pool=[r for r in pool if r["id"] not in exclude] or pool
+    if not pool: return None
+    ms=members(c,active_only=True) if prefs_list is None else prefs_list
+    scored=sorted(pool, key=lambda r:-(score_for_household(c,r,ms)+random.random()*2.5))
+    return scored[0]
+
+def plan_grid(c, days, meals, cuisine=None, quick_only=False, favorites_only=False):
+    """days: int. meals: list subset of ['breakfast','lunch','dinner'].
+    Returns grid[day][meal] = recipe dict (or None). Avoids repeating the same
+    recipe within a meal type across the week."""
+    grid=[]
+    used={m:set() for m in meals}
+    for d in range(days):
+        day={}
+        for m in meals:
+            r=pick_one(c, m, cuisine=cuisine, quick_only=quick_only,
+                       favorites_only=favorites_only, exclude=used[m])
+            if r: used[m].add(r["id"])
+            day[m]=r
+        grid.append(day)
+    return grid
+
+def grid_recipe_ids(grid):
+    ids=[]
+    for day in grid:
+        for m,r in day.items():
+            if r: ids.append(r["id"])
+    return list(dict.fromkeys(ids))
 
 def plan_recipe_ids(nights):
     ids=[]
