@@ -67,6 +67,22 @@ def add_recipe(c,name,category,cuisine,servings,minutes,type_profile,steps,items
         c.execute("INSERT OR REPLACE INTO recipe_ingredients(recipe_id,ingredient_id,amount,branch) VALUES(?,?,?,?)",
                   (rid,row["id"],amount,branch))
     c.commit(); return rid
+
+def recipe_name_exists(c, name):
+    return c.execute("SELECT 1 FROM recipes WHERE lower(name)=lower(?)",(name,)).fetchone() is not None
+
+def import_recipe(c, hr):
+    """Save a recipe dict from mealdb.to_harvest_recipe(). Skips if name exists.
+    Returns (rid or None, status) where status in {'added','duplicate','bad'}."""
+    if not hr or not hr.get("name") or not hr.get("items"):
+        return None, "bad"
+    if recipe_name_exists(c, hr["name"]):
+        return None, "duplicate"
+    rid=add_recipe(c, hr["name"], hr["category"], hr["cuisine"], 4,
+                   hr.get("minutes",30), hr["type_profile"], hr.get("steps",""),
+                   hr["items"], meal=hr.get("meal","dinner"))
+    return rid, "added"
+
 def delete_recipe(c,rid): c.execute("DELETE FROM recipes WHERE id=?",(rid,)); c.commit()
 
 # ---- USDA per-serving calories (cached in the recipes row once known) ----
