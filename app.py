@@ -5,7 +5,7 @@ import streamlit as st
 from db_setup import build, DB_PATH, connect, FOOD_TYPES, PREF_LEVELS, PREF_LABELS, DIET_PRESETS
 import core, theme, usda, mealdb
 
-st.set_page_config(page_title="Harvest", page_icon="🍂", layout="wide")
+st.set_page_config(page_title="Harvest", page_icon="🥗", layout="wide")
 if not os.path.exists(DB_PATH): build()
 UP=os.path.join(os.path.dirname(__file__),"uploads"); os.makedirs(UP,exist_ok=True)
 
@@ -18,7 +18,7 @@ TYPE_LABELS={"red_meat":"Red meat","poultry":"Poultry","pork":"Pork","seafood":"
 
 def hero(t,sub=None):
     s=f'<div class="hero-sub">{sub}</div>' if sub else ''
-    st.markdown(f'<div class="center"><div class="hero-title">{t}</div>{s}<hr class="fall-rule"/></div>',unsafe_allow_html=True)
+    st.markdown(f'<div class="center"><div class="hero-title">{t}</div>{s}<hr class="accent-rule"/></div>',unsafe_allow_html=True)
 
 def pref_editor(prefix, base_prefs):
     """Render the clean Never/Sometimes/Often/Love dials. Returns dict."""
@@ -66,7 +66,7 @@ if not core.is_onboarded(conn):
 
 # ===================== SIDEBAR =====================
 with st.sidebar:
-    st.markdown("### 🍂 Harvest")
+    st.markdown("### 🥗 Harvest")
     mem_names=[m["name"] for m in core.members(conn)]
     if ss["who"] not in mem_names: ss["who"]=mem_names[0] if mem_names else None
     if mem_names: ss["who"]=st.selectbox("You are", mem_names, index=mem_names.index(ss["who"]))
@@ -100,41 +100,78 @@ with tabs[0]:
         st.markdown("#### Plan your meals")
         c1,c2=st.columns([1,2])
         days=c1.slider("How many days?",1,7,3)
-        meals=c2.multiselect("Which meals?",["breakfast","lunch","dinner"],
-            default=ss["grid_meals"], help="Pick the slots you want to plan.")
-        ss["grid_meals"]=meals or ["dinner"]
-        c3,c4,c5=st.columns([1.4,1,1])
+        # meal selection as pills (segmented buttons), not a dropdown
+        st.write("Which meals?")
+        pc=st.columns(3)
+        for idx,mlabel in enumerate(["breakfast","lunch","dinner"]):
+            on = mlabel in ss["grid_meals"]
+            if pc[idx].button(("● " if on else "○ ")+mlabel.capitalize(),
+                              key=f"mealpill_{mlabel}", use_container_width=True):
+                if on and len(ss["grid_meals"])>1: ss["grid_meals"].remove(mlabel)
+                elif not on: ss["grid_meals"].append(mlabel)
+                st.rerun()
+        # keep canonical order
+        ss["grid_meals"]=[m for m in ["breakfast","lunch","dinner"] if m in ss["grid_meals"]]
+
+        c3,c4,c5,c6=st.columns([1.4,1,1,1.1])
         cz=c3.selectbox("Mood / cuisine",["Any"]+core.cuisines(conn),
             help="Steer the whole plan toward a cuisine.")
         quick=c4.toggle("Quick only",key="plan_quick")
         favs=c5.toggle("Favorites",key="plan_favs")
+        discover=c6.toggle("Discover new",value=True,key="plan_discover",
+            help="Mix in fresh meals from TheMealDB")
         if st.button("🎲 Generate meals"):
-            ss["grid"]=core.plan_grid(conn, days=days, meals=ss["grid_meals"],
-                cuisine=None if cz=="Any" else cz, quick_only=quick, favorites_only=favs)
+            with st.spinner("Building your plan…"):
+                ss["grid"]=core.plan_grid_blended(conn, days=days, meals=ss["grid_meals"],
+                    cuisine=None if cz=="Any" else cz, quick_only=quick,
+                    favorites_only=favs, discover=discover)
 
         grid=ss["grid"]
         if not grid:
             st.info("Pick your days and meals, then generate.")
         else:
+            WEEKDAYS=["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
             all_by_meal={m:{r["id"]:r["name"] for r in core.recipes(conn,meal=m)} for m in ["breakfast","lunch","dinner"]}
             for di,day in enumerate(grid):
-                st.markdown(f"##### Day {di+1}")
+                st.markdown(f'<div class="daylabel">{WEEKDAYS[di%7]}</div>',unsafe_allow_html=True)
                 cols=st.columns(len(day))
                 for ci,(meal,r) in enumerate(day.items()):
                     with cols[ci]:
                         if not r:
-                            st.markdown(f"*{meal}: none*"); continue
-                        st.markdown(f'<div class="card"><span class="pill veg">{meal}</span>'
+                            st.markdown(f'<div class="mcard"><span class="mmeta">{meal}: none</span></div>',unsafe_allow_html=True)
+                            continue
+                        m=core.recipe_macros(conn,r["id"])
+                        cal = f"{m['kcal']} cal" if m.get("kcal") else "cal —"
+                        st.markdown(
+                            f'<div class="mcard">'
+                            f'<span class="pill veg">{meal}</span>'
                             f'<span class="pill cuisine">{r["cuisine"]}</span>'
-                            f'<span class="pill">{r["minutes"]}m</span><br>'
-                            f'<b>{r["name"]}</b><br>{macro_badges(r["id"])}</div>',unsafe_allow_html=True)
-                        bcols=st.columns(2)
-                        if bcols[0].button("🎲", key=f"rr_{di}_{meal}", help="Re-roll this meal"):
-                            used={x["id"] for d2 in grid for mm,x in d2.items() if mm==meal and x}
-                            newr=core.pick_one(conn, meal, exclude=used,
-                                cuisine=None if cz=="Any" else cz, quick_only=quick, favorites_only=favs)
+                            f'<div class="mname">{r["name"]}</div>'
+                            f'<span class="mmeta">{r["minutes"]} min · {cal}</span>'
+                            f'</div>', unsafe_allow_html=True)
+                        with st.expander("View recipe"):
+                            if m.get("kcal"):
+                                mm=st.columns(4)
+                                mm[0].metric("Cal",f"{m['kcal']}")
+                                mm[1].metric("Protein",f"{m['protein']}g")
+                                mm[2].metric("Carbs",f"{m['carbs']}g")
+                                mm[3].metric("Fat",f"{m['fat']}g")
+                            st.markdown("**Ingredients**")
+                            for l in core.recipe_lines(conn,r["id"]):
+                                amt=f"{l['amount']} " if l["amount"] else ""
+                                st.markdown(f"• {amt}{l['ingredient']}")
+                            if r["steps"]:
+                                st.markdown("**Steps**"); st.write(r["steps"])
+                        bc=st.columns(2)
+                        if bc[0].button("🎲 Reroll", key=f"rr_{di}_{meal}"):
+                            used={x["id"] for d2 in grid for mm2,x in d2.items() if mm2==meal and x}
+                            newr=None
+                            if discover: newr=core.discover_meal(conn, meal, cuisine=None if cz=="Any" else cz)
+                            if not newr:
+                                newr=core.pick_one(conn, meal, exclude=used,
+                                    cuisine=None if cz=="Any" else cz, quick_only=quick, favorites_only=favs)
                             if newr: ss["grid"][di][meal]=newr; st.rerun()
-                        pick=bcols[1].selectbox("swap",["swap…"]+list(all_by_meal[meal].values()),
+                        pick=bc[1].selectbox("swap",["swap…"]+list(all_by_meal[meal].values()),
                             key=f"sw_{di}_{meal}", label_visibility="collapsed")
                         if pick!="swap…":
                             rid=[k for k,v in all_by_meal[meal].items() if v==pick][0]
@@ -184,6 +221,35 @@ with tabs[1]:
 
 # ===================== RECIPES =====================
 with tabs[2]:
+    st.markdown("#### Find a recipe")
+    sc1,sc2=st.columns([3,1])
+    sq=sc1.text_input("Search", placeholder="Search your library and thousands more…", label_visibility="collapsed")
+    go=sc2.button("Search", use_container_width=True)
+    if go and sq.strip():
+        with st.spinner("Searching…"):
+            results=core.blended_search(conn, sq.strip())
+        if not results:
+            st.info("No matches found.")
+        else:
+            st.caption(f"{len(results)} results")
+            for res in results[:20]:
+                rc=st.columns([1,4,1])
+                if res.get("thumb"): rc[0].image(res["thumb"], width=60)
+                src_pill = '<span class="pill veg">saved</span>' if res["source"]=="library" else '<span class="pill cuisine">new</span>'
+                rc[1].markdown(f'{res["name"]} {src_pill}'
+                    + (f'<span class="pill">{res["cuisine"]}</span>' if res.get("cuisine") else ''),
+                    unsafe_allow_html=True)
+                if res["source"]=="library":
+                    if rc[2].button("View", key=f"sv_{res['id']}"):
+                        st.session_state["view_recipe"]=res["id"]; st.rerun()
+                else:
+                    if rc[2].button("Add", key=f"sm_{res['meal_id']}"):
+                        saved=core.save_mealdb_by_id(conn, res["meal_id"])
+                        if saved: st.success(f"Added {saved['name']} to your library.")
+                        else: st.warning("Couldn't add that one.")
+                        st.rerun()
+        st.divider()
+
     st.markdown("#### Recipe library")
     f1,f2,f3,f4=st.columns(4)
     cz=f1.selectbox("Cuisine",["All"]+core.cuisines(conn))
@@ -223,59 +289,6 @@ with tabs[2]:
                 core.delete_recipe(conn,r["id"]); st.rerun()
 
     st.divider()
-    with st.expander("🌍 Import recipes from TheMealDB (free)"):
-        st.caption("Search, browse by cuisine/category, or get a random meal. "
-                   "Calories are computed automatically from USDA. Recipes courtesy of TheMealDB.")
-        imode=st.radio("How", ["Search","Browse cuisine","Browse category","Surprise me"],
-                       horizontal=True, key="imp_mode")
-        found=[]
-        if imode=="Search":
-            q=st.text_input("Search by name", placeholder="e.g. chicken, curry, pasta", key="imp_q")
-            if st.button("Search TheMealDB", key="imp_search") and q.strip():
-                ms=mealdb.search(q.strip())
-                if ms is None or not ms: st.warning("No results (or TheMealDB unreachable).")
-                found=ms or []
-        elif imode=="Browse cuisine":
-            areas=mealdb.list_areas()
-            if not areas: st.warning("Couldn't reach TheMealDB.")
-            else:
-                area=st.selectbox("Cuisine", areas, key="imp_area")
-                if st.button("Show meals", key="imp_area_go"):
-                    found=mealdb.by_area(area)
-        elif imode=="Browse category":
-            cats=mealdb.list_categories()
-            if not cats: st.warning("Couldn't reach TheMealDB.")
-            else:
-                cat=st.selectbox("Category", cats, key="imp_cat")
-                if st.button("Show meals", key="imp_cat_go"):
-                    found=mealdb.by_category(cat)
-        else:
-            if st.button("🎲 Get a random meal", key="imp_rand"):
-                m=mealdb.random_meal()
-                if m:
-                    hr=mealdb.to_harvest_recipe(m)
-                    rid,status=core.import_recipe(conn, hr)
-                    if status=="added": st.success(f"Imported: {hr['name']}")
-                    elif status=="duplicate": st.info(f"You already have {hr['name']}.")
-                    else: st.warning("That meal couldn't be imported.")
-                    st.rerun()
-
-        # 'found' from search/browse are lightweight cards (id,name,thumb) or full (search)
-        if found:
-            st.caption(f"{len(found)} results — click Import to add (with USDA calories).")
-            for meal in found[:12]:
-                cc=st.columns([1,3,1])
-                if meal.get("strMealThumb"): cc[0].image(meal["strMealThumb"], width=70)
-                cc[1].markdown(f"**{meal.get('strMeal','?')}**")
-                if cc[2].button("Import", key=f"imp_{meal['idMeal']}"):
-                    full=mealdb.lookup(meal["idMeal"])   # get full ingredients
-                    hr=mealdb.to_harvest_recipe(full)
-                    rid,status=core.import_recipe(conn, hr)
-                    if status=="added": st.success(f"Imported {hr['name']}.")
-                    elif status=="duplicate": st.info("Already in your library.")
-                    else: st.warning("Couldn't import that one.")
-                    st.rerun()
-
     with st.expander("➕ Add your own recipe"):
         rn=st.text_input("Name",key="cr_n")
         d1,d2,d3,d4=st.columns(4)
