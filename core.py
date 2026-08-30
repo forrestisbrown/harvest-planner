@@ -128,6 +128,45 @@ def best_for_person(c, prefs, k=5, favorites_only=False, quick_only=False):
     s=[(score_recipe_for_person(r,prefs),r) for r in recipes(c,favorites_only=favorites_only,quick_only=quick_only)]
     s.sort(key=lambda x:-x[0]); return [r for _,r in s[:k]]
 
+def blended_search(c, query, include_mealdb=True):
+    """Search saved recipes AND TheMealDB, return one merged list of dicts each
+    like {name, source, id (if saved), meal_id (if mealdb), cuisine, meal}.
+    Saved recipes first, then MealDB results not already in the library."""
+    out=[]
+    ql=query.lower().strip()
+    for r in recipes(c):
+        if ql in r["name"].lower():
+            out.append({"name":r["name"],"source":"library","id":r["id"],
+                        "cuisine":r["cuisine"],"meal":r["meal"]})
+    have={o["name"].lower() for o in out}
+    if include_mealdb:
+        try:
+            import mealdb
+            for m in (mealdb.search(query) or []):
+                nm=(m.get("strMeal") or "").strip()
+                if nm and nm.lower() not in have:
+                    out.append({"name":nm,"source":"mealdb","meal_id":m["idMeal"],
+                                "cuisine":(m.get("strArea") or ""),"meal":"dinner",
+                                "thumb":m.get("strMealThumb")})
+                    have.add(nm.lower())
+        except Exception:
+            pass
+    return out
+
+def save_mealdb_by_id(c, meal_id):
+    """Fetch a MealDB meal by id, save to library, return recipe dict or None."""
+    try:
+        import mealdb
+        hr=mealdb.to_harvest_recipe(mealdb.lookup(meal_id))
+        if not hr: return None
+        if recipe_name_exists(c, hr["name"]):
+            ex=[r for r in recipes(c) if r["name"].lower()==hr["name"].lower()]
+            return ex[0] if ex else None
+        rid,_=import_recipe(c, hr)
+        return recipe_by_id(c, rid) if rid else None
+    except Exception:
+        return None
+
 # ---- weekly plan ----
 def plan_week(c, n=5, mode="together", favorites_only=False, quick_only=False, seed=None):
     if seed is not None: random.seed(seed)
@@ -177,6 +216,57 @@ def plan_grid(c, days, meals, cuisine=None, quick_only=False, favorites_only=Fal
         for m in meals:
             r=pick_one(c, m, cuisine=cuisine, quick_only=quick_only,
                        favorites_only=favorites_only, exclude=used[m])
+            if r: used[m].add(r["id"])
+            day[m]=r
+        grid.append(day)
+    return grid
+
+# ---- blended discovery (saved library + fresh TheMealDB) ----
+def discover_meal(c, meal, cuisine=None, exclude=None):
+    """Try to pull a fresh TheMealDB meal for this slot, save it, and return it.
+    Returns a recipe dict (already saved to the library) or None on any failure.
+    Kept separate so generation can mix in discoveries without depending on the
+    network for the whole plan."""
+    try:
+        import mealdb, random
+        m=None
+        if cuisine and cuisine!="Any":
+            cards=mealdb.by_area(cuisine) or []
+            if cards:
+                pick=random.choice(cards)
+                m=mealdb.lookup(pick["idMeal"])
+        if m is None:
+            m=mealdb.random_meal()
+        if not m: return None
+        hr=mealdb.to_harvest_recipe(m)
+        if not hr: return None
+        # respect the requested slot loosely: only breakfast maps specially
+        if meal!="breakfast" and hr.get("meal")=="breakfast": return None
+        if recipe_name_exists(c, hr["name"]):
+            existing=[r for r in recipes(c) if r["name"].lower()==hr["name"].lower()]
+            return existing[0] if existing else None
+        rid,status=import_recipe(c, hr)
+        return recipe_by_id(c, rid) if rid else None
+    except Exception:
+        return None
+
+def plan_grid_blended(c, days, meals, cuisine=None, quick_only=False,
+                      favorites_only=False, discover=True, discover_rate=0.30):
+    """Like plan_grid but, when discover=True, occasionally seeds a fresh
+    TheMealDB meal into a slot instead of a saved one (~discover_rate of slots).
+    Discoveries are saved to the library so they behave like any other recipe."""
+    import random
+    grid=[]; used={m:set() for m in meals}
+    for d in range(days):
+        day={}
+        for m in meals:
+            r=None
+            if discover and m!="breakfast" and random.random()<discover_rate:
+                r=discover_meal(c, m, cuisine=cuisine, exclude=used[m])
+                if r and r["id"] in used[m]: r=None
+            if r is None:
+                r=pick_one(c, m, cuisine=cuisine, quick_only=quick_only,
+                           favorites_only=favorites_only, exclude=used[m])
             if r: used[m].add(r["id"])
             day[m]=r
         grid.append(day)
