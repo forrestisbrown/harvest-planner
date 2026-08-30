@@ -18,7 +18,7 @@ os.makedirs(UP_DIR, exist_ok=True)
 
 # ---- session defaults ----
 ss = st.session_state
-ss.setdefault("dark", False)
+ss.setdefault("dark", True)
 ss.setdefault("plan_ids", [])
 ss.setdefault("who", None)
 
@@ -37,7 +37,9 @@ with st.sidebar:
     ss["who"] = st.selectbox("Signed in as", mem_names,
                              index=mem_names.index(ss["who"]) if ss["who"] in mem_names else 0) if mem_names else None
 
-    ss["dark"] = st.toggle("🌙 Dark mode", value=ss["dark"])
+    dark_new = st.toggle("Dark mode", value=ss["dark"])
+    if dark_new != ss["dark"]:
+        ss["dark"] = dark_new; st.rerun()
 
     st.divider()
     st.markdown("**Who's eating**")
@@ -47,7 +49,7 @@ with st.sidebar:
         if on != bool(m["active"]):
             core.set_member_active(conn, m["name"], on); st.rerun()
 
-    with st.expander("➕ Add / remove member"):
+    with st.expander("Add or remove member"):
         nm = st.text_input("Name", key="new_member")
         style = st.selectbox("Dietary style", ["balanced","meat_potatoes","veggie_heavy","pescatarian","vegetarian"])
         if st.button("Add member", use_container_width=True) and nm.strip():
@@ -56,7 +58,7 @@ with st.sidebar:
         if st.button("Remove", use_container_width=True) and rm!="—":
             core.remove_member(conn, rm); st.rerun()
 
-    with st.expander("🏬 Stores"):
+    with st.expander("Stores"):
         for s in core.stores(conn): st.write("• "+s["name"])
         ns = st.text_input("Add a store", key="new_store")
         if st.button("Add store", use_container_width=True) and ns.strip():
