@@ -1,71 +1,47 @@
-# 🍂 Harvest — Household Meal Planner
+# 🍂 Harvest — Household Meal Planner (v4)
 
-Warm, self-hosted meal planning for a household. Plan a week, favorite meals,
-remix them, build a multi-store shared shopping list, log receipts and track
-spend, and keep household (non-food) items in the same place. Light & dark mode.
-
-Runs free on your PC, or free online for you + Lizzy via Streamlit Community Cloud.
-
-## Files
-| File | Role |
-|------|------|
-| `db_setup.py` | Schema + seed (28 recipes, stores, members). Run once. |
-| `core.py` | All logic: planner, favorites, remix, shopping list, receipts, spend. |
-| `app.py` | The web app (Streamlit). This is the main interface. |
-| `theme.py` | Warm fall palette + light/dark styling. |
-| `cli.py` | Optional terminal access. |
-| `.streamlit/config.toml` | Theme colors. |
-| `requirements.txt` | For cloud deploy. |
+Warm, single-theme meal planner with real per-person dietary targeting,
+honest data (no fake gram precision), and per-serving calories from the
+USDA FoodData Central database.
 
 ## Run locally
 ```bash
 python3 -m pip install -r requirements.txt
-python3 db_setup.py --reset      # first time only
+python3 db_setup.py --reset       # first time only
 python3 -m streamlit run app.py
 ```
-Opens in your browser. Use the sidebar to pick who you are, toggle dark mode,
-manage members and stores.
+First launch shows onboarding — add your household and set preferences.
 
-## Put it online for you + Lizzy (free)
+## Calories (USDA) — optional but recommended
+Recipes show ~calories per serving, pulled live from the free USDA
+FoodData Central API. Without a key the app still works; calories just show "—".
 
-This is the Streamlit Community Cloud path. ~15 minutes, no server to manage.
+**Get a free key:** https://fdc.nal.usda.gov/api-key-signup/
 
-1. **Make a GitHub account** (github.com) if you don't have one.
-2. **Create a new repository** — name it anything, e.g. `harvest-planner`. Set it
-   to Private if you like; Streamlit Cloud works with private repos.
-3. **Upload these files** to the repo (GitHub's "Add file → Upload files" works
-   fine — drag in everything EXCEPT `mealplanner.db`, `uploads/`, and
-   `__pycache__/`; the `.gitignore` already excludes them).
-4. Go to **share.streamlit.io**, sign in with GitHub, click **New app**, pick
-   your repo, and set the main file to `app.py`. Deploy.
-5. You'll get a URL like `https://harvest-planner.streamlit.app`. Open it on
-   your phone and Lizzy's — both of you use the same live app.
+**On Streamlit Cloud:** Manage app → Settings → Secrets, paste:
+```
+USDA_API_KEY = "your-key"
+```
+**Locally:** copy `.streamlit/secrets.toml.example` to `.streamlit/secrets.toml`
+and put your key in it. Never commit the real secrets file (`.gitignore` blocks it).
 
-### One thing to know about cloud data
-On Streamlit Community Cloud the SQLite file resets when the app restarts
-(their storage is temporary). For two people sharing a list that needs to
-persist, the clean upgrade is a free hosted database — **Supabase** or **Neon**
-(both have free Postgres tiers). When you're ready for that, it's a small change
-to `core.py`'s connection setup; everything else stays the same. Locally, your
-data persists fine in `mealplanner.db`.
+Note: calories are estimates. Weights convert exactly (1 lb → grams); volumes
+(cups, tbsp) are approximate and flagged, since a cup of rice ≠ a cup of spinach.
 
-## How the household "branch" system works
-Each recipe ingredient is tagged `shared` or a member's name. Shared items are
-cooked for everyone and split evenly for calories; a member-tagged item (e.g.
-cheese for You, extra veggies for Lizzy) only shows up on the list and in the
-calories when that member is active. Toggle someone off and their extras vanish
-from the list automatically.
+## What's in v4
+- **Onboarding first** — no preset members; you build the household.
+- **Clean preferences** — each food type set to Never / Sometimes / Often / Love it,
+  across red meat, poultry, pork, seafood, veg, legumes, pasta. Targets the menu.
+- **Together or Individual** per week — one shared meal, or each person their own dish.
+- **Simple grocery list** — plain item names (you buy by the pack); amounts live
+  on the recipe card only.
+- **Real recipe cards** — amounts, short steps, cook time, and ~calories/serving.
+- **Quick filter** — meals about 20 min or less.
+- **Swap a night** — replace any generated meal from the dropdown.
+- **Add your own recipes** — with amounts, steps, and a type profile; calories
+  auto-calc when you open the card.
+- **Multi-store shared list, receipts + spend, household (non-food) items** — as before.
 
-## Features at a glance
-- **Plan** — generate a 3–7 dinner week, swap any night, favorites-only mode,
-  live grocery preview + calorie split, push the whole week to the shopping list.
-- **Recipes** — 28 to start across American/Mexican/Asian/Italian/Indian/
-  Mediterranean. Filter by cuisine/type/favorites. Each recipe shows related
-  dishes (by shared ingredients + cuisine) and a remix/variation idea. Add your
-  own recipes.
-- **Shopping List** — shared, multi-store. Filter by store, by person, or
-  food vs household. Move an item to another store so you don't forget the
-  second stop. Check items off, clear checked, share the list as text.
-- **Receipts & Spend** — photo + total (optionally itemize). Tracks total spend,
-  spend by store, and most-bought items.
-- **Household** — non-food items (paper towels, detergent) on the same list.
+## Files
+`app.py` UI · `core.py` logic · `db_setup.py` data + schema · `theme.py` warm theme ·
+`usda.py` calorie API · `units.py` amount→grams · `cli.py` optional terminal.
