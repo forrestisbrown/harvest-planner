@@ -41,7 +41,7 @@ def inject():
       .center {{ text-align:center; }}
       .hero-title {{ text-align:center; font-size:2.4rem; font-weight:800; margin:.2rem 0 0; color:var(--ink); }}
       .hero-sub {{ text-align:center; color:var(--muted); margin:.1rem 0 0; }}
-      .fall-rule {{ height:4px; border:0; width:120px; margin:.7rem auto 1.4rem;
+      .accent-rule {{ height:4px; border:0; width:120px; margin:.7rem auto 1.4rem;
         background:linear-gradient(90deg,var(--teal),var(--green),var(--blue),var(--slate)); border-radius:2px; }}
 
       .pill {{ display:inline-block; padding:3px 12px; border-radius:999px; font-size:.74rem;
@@ -52,6 +52,13 @@ def inject():
       .pill.veg {{ background:var(--green); color:#fff; border-color:var(--green); }}
 
       .card {{ background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:16px 18px; margin-bottom:14px; }}
+      /* compact meal card for the plan grid */
+      .mcard {{ background:var(--panel); border:1px solid var(--line); border-radius:12px;
+        padding:10px 12px; margin-bottom:6px; line-height:1.35; }}
+      .mcard .mname {{ font-weight:700; font-size:1.02rem; color:var(--ink); margin:4px 0 2px; }}
+      .mcard .mmeta {{ color:var(--muted); font-size:.78rem; }}
+      .daylabel {{ font-weight:800; color:var(--teal); font-size:1.05rem;
+        margin:10px 0 4px; letter-spacing:.02em; }}
 
       .stTextInput input, .stNumberInput input, .stTextArea textarea, .stDateInput input {{
         background:var(--ibg) !important; color:var(--iink) !important; border:1px solid var(--line) !important; }}
