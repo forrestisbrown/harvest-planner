@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS ingredients (
 CREATE TABLE IF NOT EXISTS recipes (
     id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE,
     category TEXT, cuisine TEXT DEFAULT 'American', servings INTEGER NOT NULL DEFAULT 2,
-    minutes INTEGER DEFAULT 30, is_quick INTEGER DEFAULT 0, is_favorite INTEGER DEFAULT 0,
+    minutes INTEGER DEFAULT 30, meal TEXT DEFAULT 'dinner', is_quick INTEGER DEFAULT 0, is_favorite INTEGER DEFAULT 0,
     is_custom INTEGER DEFAULT 0, type_profile TEXT DEFAULT '{}',
     steps TEXT DEFAULT '', cal_per_serving INTEGER, notes TEXT DEFAULT '');
 CREATE TABLE IF NOT EXISTS recipe_ingredients (
@@ -103,9 +103,9 @@ def _tp(**kw):
     b={t:0 for t in FOOD_TYPES}; b.update(kw); return b
 
 # recipe -> dict(category,cuisine,servings,minutes,type_profile,steps,ingredients=[(name,amount,branch)])
-def R(category,cuisine,servings,minutes,tp,steps,ings):
+def R(category,cuisine,servings,minutes,tp,steps,ings,meal="dinner"):
     return {"category":category,"cuisine":cuisine,"servings":servings,"minutes":minutes,
-            "type_profile":tp,"steps":steps,"ings":ings}
+            "type_profile":tp,"steps":steps,"ings":ings,"meal":meal}
 
 RECIPES = {
  "Beef & Potato Skillet": R("beef","American",2,25,_tp(red_meat=3,veg=1),
@@ -225,6 +225,82 @@ RECIPES = {
  "Salmon Poke Bowl": R("seafood","Asian",2,15,_tp(seafood=3,veg=2,legumes=1),
    "Cube cooked salmon. Bowl over rice with avocado, cucumber, soy sauce and green onion. No cooking beyond the fish.",
    [("Salmon fillet","2 fillets","shared"),("White rice","1.5 cups cooked","shared"),("Avocado","1","shared"),("Cucumber","1","shared"),("Soy sauce","3 tbsp","shared"),("Green onion","2","shared")]),
+
+ # ---------- BREAKFASTS ----------
+ "Classic Oatmeal": R("breakfast","American",1,10,_tp(),
+   "Simmer oats in milk or water. Top with banana, blueberries, a drizzle of honey.",
+   [("Oats","1/2 cup","shared"),("Milk","1 cup","shared"),("Banana","1","shared"),("Blueberries","1/4 cup","shared"),("Honey","1 tsp","shared")], meal="breakfast"),
+ "Scrambled Eggs & Toast": R("breakfast","American",1,10,_tp(),
+   "Scramble eggs in butter. Toast bread. Serve with a side of fruit.",
+   [("Eggs","3","shared"),("Butter","1 tbsp","shared"),("Bread","2 slices","shared")], meal="breakfast"),
+ "Greek Yogurt Bowl": R("breakfast","Mediterranean",1,5,_tp(),
+   "Layer yogurt with granola, strawberries and honey. No cooking.",
+   [("Greek yogurt","1 cup","shared"),("Granola","1/3 cup","shared"),("Strawberries","1/2 cup","shared"),("Honey","1 tsp","shared")], meal="breakfast"),
+ "Peanut Butter Banana Toast": R("breakfast","American",1,5,_tp(),
+   "Toast bread, spread peanut butter, top with banana slices.",
+   [("Bread","2 slices","shared"),("Peanut butter","2 tbsp","shared"),("Banana","1","shared")], meal="breakfast"),
+ "Sausage Egg Bagel": R("breakfast","American",1,15,_tp(pork=2),
+   "Cook sausage and egg. Stack on a toasted bagel with cheese.",
+   [("Bagel","1","shared"),("Sausage links","2","shared"),("Eggs","1","shared"),("Cheddar cheese","1 slice","shared")], meal="breakfast"),
+ "Pancakes": R("breakfast","American",2,20,_tp(pasta=1),
+   "Mix and griddle pancakes. Serve with syrup and fruit.",
+   [("Pancake mix","1 cup","shared"),("Milk","3/4 cup","shared"),("Eggs","1","shared"),("Maple syrup","2 tbsp","shared"),("Blueberries","1/2 cup","shared")], meal="breakfast"),
+ "Veggie Omelette": R("breakfast","American",1,15,_tp(veg=2),
+   "Whisk eggs, pour into pan, fill with peppers, spinach, mushroom and cheese. Fold.",
+   [("Eggs","3","shared"),("Bell pepper","1/2","shared"),("Spinach","1/2 cup","shared"),("Mushroom","1/4 cup","shared"),("Cheddar cheese","1/4 cup","shared")], meal="breakfast"),
+ "Breakfast Burrito": R("breakfast","Mexican",1,15,_tp(veg=1),
+   "Scramble eggs with pepper and onion. Wrap in a tortilla with cheese and salsa.",
+   [("Eggs","2","shared"),("Flour tortillas","1","shared"),("Bell pepper","1/2","shared"),("Onion","1/4","shared"),("Cheddar cheese","1/4 cup","shared"),("Salsa","2 tbsp","shared")], meal="breakfast"),
+ "Avocado Toast": R("breakfast","American",1,10,_tp(veg=1),
+   "Toast bread, mash avocado on top, add egg and a squeeze of lemon.",
+   [("Bread","2 slices","shared"),("Avocado","1","shared"),("Eggs","1","shared"),("Lemon","1/4","shared")], meal="breakfast"),
+ "Yogurt & Cereal": R("breakfast","American",1,5,_tp(),
+   "Bowl cereal with milk; side of yogurt and fruit. Fastest breakfast there is.",
+   [("Honey nut cereal","1 cup","shared"),("Milk","1 cup","shared"),("Banana","1","shared")], meal="breakfast"),
+ "Cottage Cheese & Fruit": R("breakfast","American",1,5,_tp(),
+   "Scoop cottage cheese, top with berries and a drizzle of honey.",
+   [("Cottage cheese","1 cup","shared"),("Blueberries","1/2 cup","shared"),("Honey","1 tsp","shared")], meal="breakfast"),
+ "Ham & Cheese English Muffin": R("breakfast","American",1,10,_tp(pork=2),
+   "Toast an english muffin, layer ham, egg and cheese.",
+   [("English muffin","1","shared"),("Ham","2 slices","shared"),("Eggs","1","shared"),("Cheddar cheese","1 slice","shared")], meal="breakfast"),
+
+ # ---------- LUNCHES ----------
+ "Turkey Sandwich": R("lunch","American",1,10,_tp(poultry=2),
+   "Layer turkey, provolone, greens and tomato on bread with mustard.",
+   [("Bread","2 slices","shared"),("Deli turkey","4 slices","shared"),("Provolone","1 slice","shared"),("Mixed greens","1/2 cup","shared"),("Tomato","2 slices","shared"),("Mustard","1 tsp","shared")], meal="lunch"),
+ "Chicken Caesar Salad": R("lunch","American",1,15,_tp(poultry=3,veg=2),
+   "Toss romaine with caesar dressing, grilled chicken, parmesan and croutons.",
+   [("Chicken breast","1/2 lb","shared"),("Mixed greens","2 cups","shared"),("Caesar dressing","2 tbsp","shared"),("Parmesan","2 tbsp","shared"),("Croutons","1/4 cup","shared")], meal="lunch"),
+ "Hummus Veggie Wrap": R("lunch","Mediterranean",1,10,_tp(legumes=2,veg=3),
+   "Spread hummus on a tortilla, fill with cucumber, pepper, greens. Roll and slice.",
+   [("Flour tortillas","1","shared"),("Hummus","1/4 cup","shared"),("Cucumber","1/2","shared"),("Bell pepper","1/2","shared"),("Mixed greens","1 cup","shared")], meal="lunch"),
+ "Italian Sub": R("lunch","Italian",1,10,_tp(pork=2),
+   "Layer salami, ham, provolone, greens and tomato on a hoagie roll.",
+   [("Hoagie rolls","1","shared"),("Salami","4 slices","shared"),("Ham","3 slices","shared"),("Provolone","2 slices","shared"),("Mixed greens","1/2 cup","shared"),("Tomato","2 slices","shared")], meal="lunch"),
+ "Leftover Rice Bowl": R("lunch","Asian",1,10,_tp(veg=2),
+   "Reheat rice, top with a fried egg, veg and soy sauce. Uses up leftovers.",
+   [("White rice","1 cup cooked","shared"),("Eggs","1","shared"),("Broccoli","1/2 cup","shared"),("Soy sauce","1 tbsp","shared"),("Green onion","1","shared")], meal="lunch"),
+ "Caprese Sandwich": R("lunch","Italian",1,10,_tp(veg=1),
+   "Layer mozzarella, tomato and basil on bread with olive oil.",
+   [("Bread","2 slices","shared"),("Mozzarella","3 slices","shared"),("Tomato","3 slices","shared"),("Basil","a few leaves","shared"),("Olive oil","1 tsp","shared")], meal="lunch"),
+ "Tuna Salad": R("lunch","American",1,10,_tp(seafood=3),
+   "Mix tuna with mayo, serve on greens or bread.",
+   [("Canned tuna","1 can","shared"),("Mayonnaise","2 tbsp","shared"),("Mixed greens","1 cup","shared"),("Bread","2 slices","shared")], meal="lunch"),
+ "Quesadilla": R("lunch","Mexican",1,10,_tp(veg=1),
+   "Fill a tortilla with cheese and pepper, griddle until crisp. Serve with salsa.",
+   [("Flour tortillas","2","shared"),("Cheddar cheese","3/4 cup","shared"),("Bell pepper","1/2","shared"),("Salsa","2 tbsp","shared")], meal="lunch"),
+ "Chickpea Salad Bowl": R("lunch","Mediterranean",1,10,_tp(legumes=3,veg=2),
+   "Toss chickpeas with cucumber, tomato, feta and lemon. No cooking.",
+   [("Chickpeas","1 can","shared"),("Cucumber","1/2","shared"),("Tomato","1","shared"),("Feta","1/4 cup","shared"),("Lemon","1/2","shared"),("Olive oil","1 tbsp","shared")], meal="lunch"),
+ "Grilled Cheese & Soup": R("lunch","American",1,15,_tp(veg=1),
+   "Griddle a cheese sandwich in butter. Serve with a bowl of tomato soup.",
+   [("Bread","2 slices","shared"),("Cheddar cheese","2 slices","shared"),("Butter","1 tbsp","shared"),("Diced tomatoes","1 cup","shared")], meal="lunch"),
+ "BLT": R("lunch","American",1,15,_tp(pork=2,veg=1),
+   "Crisp bacon, stack with lettuce and tomato on toast with mayo.",
+   [("Bread","2 slices","shared"),("Bacon","3 strips","shared"),("Mixed greens","1/2 cup","shared"),("Tomato","2 slices","shared"),("Mayonnaise","1 tbsp","shared")], meal="lunch"),
+ "Chicken Salad Croissant": R("lunch","American",1,10,_tp(poultry=3),
+   "Mix diced chicken with mayo, serve on a croissant with greens.",
+   [("Chicken breast","1/2 lb","shared"),("Mayonnaise","2 tbsp","shared"),("Croissant","1","shared"),("Mixed greens","1/2 cup","shared")], meal="lunch"),
 }
 
 
@@ -239,9 +315,9 @@ def build(reset=False, seed_members=False):
     c.executemany("INSERT OR IGNORE INTO ingredients(name,aisle,kind) VALUES(?,?,?)",INGREDIENTS)
     for nm,r in RECIPES.items():
         quick=1 if r["minutes"]<=20 else 0
-        c.execute("""INSERT OR IGNORE INTO recipes(name,category,cuisine,servings,minutes,is_quick,type_profile,steps)
-                     VALUES(?,?,?,?,?,?,?,?)""",
-                  (nm,r["category"],r["cuisine"],r["servings"],r["minutes"],quick,json.dumps(r["type_profile"]),r["steps"]))
+        c.execute("""INSERT OR IGNORE INTO recipes(name,category,cuisine,servings,minutes,meal,is_quick,type_profile,steps)
+                     VALUES(?,?,?,?,?,?,?,?,?)""",
+                  (nm,r["category"],r["cuisine"],r["servings"],r["minutes"],r.get("meal","dinner"),quick,json.dumps(r["type_profile"]),r["steps"]))
         rid=c.execute("SELECT id FROM recipes WHERE name=?",(nm,)).fetchone()["id"]
         for iname,amount,branch in r["ings"]:
             row=c.execute("SELECT id FROM ingredients WHERE name=?",(iname,)).fetchone()
