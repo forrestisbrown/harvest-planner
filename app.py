@@ -3,7 +3,7 @@ recipe cards, quick filter, night swap, custom recipes, simple grocery list."""
 import os
 import streamlit as st
 from db_setup import build, DB_PATH, connect, FOOD_TYPES, PREF_LEVELS, PREF_LABELS, DIET_PRESETS
-import core, theme, usda
+import core, theme, usda, mealdb
 
 st.set_page_config(page_title="Harvest", page_icon="🍂", layout="wide")
 if not os.path.exists(DB_PATH): build()
@@ -223,6 +223,59 @@ with tabs[2]:
                 core.delete_recipe(conn,r["id"]); st.rerun()
 
     st.divider()
+    with st.expander("🌍 Import recipes from TheMealDB (free)"):
+        st.caption("Search, browse by cuisine/category, or get a random meal. "
+                   "Calories are computed automatically from USDA. Recipes courtesy of TheMealDB.")
+        imode=st.radio("How", ["Search","Browse cuisine","Browse category","Surprise me"],
+                       horizontal=True, key="imp_mode")
+        found=[]
+        if imode=="Search":
+            q=st.text_input("Search by name", placeholder="e.g. chicken, curry, pasta", key="imp_q")
+            if st.button("Search TheMealDB", key="imp_search") and q.strip():
+                ms=mealdb.search(q.strip())
+                if ms is None or not ms: st.warning("No results (or TheMealDB unreachable).")
+                found=ms or []
+        elif imode=="Browse cuisine":
+            areas=mealdb.list_areas()
+            if not areas: st.warning("Couldn't reach TheMealDB.")
+            else:
+                area=st.selectbox("Cuisine", areas, key="imp_area")
+                if st.button("Show meals", key="imp_area_go"):
+                    found=mealdb.by_area(area)
+        elif imode=="Browse category":
+            cats=mealdb.list_categories()
+            if not cats: st.warning("Couldn't reach TheMealDB.")
+            else:
+                cat=st.selectbox("Category", cats, key="imp_cat")
+                if st.button("Show meals", key="imp_cat_go"):
+                    found=mealdb.by_category(cat)
+        else:
+            if st.button("🎲 Get a random meal", key="imp_rand"):
+                m=mealdb.random_meal()
+                if m:
+                    hr=mealdb.to_harvest_recipe(m)
+                    rid,status=core.import_recipe(conn, hr)
+                    if status=="added": st.success(f"Imported: {hr['name']}")
+                    elif status=="duplicate": st.info(f"You already have {hr['name']}.")
+                    else: st.warning("That meal couldn't be imported.")
+                    st.rerun()
+
+        # 'found' from search/browse are lightweight cards (id,name,thumb) or full (search)
+        if found:
+            st.caption(f"{len(found)} results — click Import to add (with USDA calories).")
+            for meal in found[:12]:
+                cc=st.columns([1,3,1])
+                if meal.get("strMealThumb"): cc[0].image(meal["strMealThumb"], width=70)
+                cc[1].markdown(f"**{meal.get('strMeal','?')}**")
+                if cc[2].button("Import", key=f"imp_{meal['idMeal']}"):
+                    full=mealdb.lookup(meal["idMeal"])   # get full ingredients
+                    hr=mealdb.to_harvest_recipe(full)
+                    rid,status=core.import_recipe(conn, hr)
+                    if status=="added": st.success(f"Imported {hr['name']}.")
+                    elif status=="duplicate": st.info("Already in your library.")
+                    else: st.warning("Couldn't import that one.")
+                    st.rerun()
+
     with st.expander("➕ Add your own recipe"):
         rn=st.text_input("Name",key="cr_n")
         d1,d2,d3,d4=st.columns(4)
