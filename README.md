@@ -1,8 +1,7 @@
-# 🍂 Harvest — Household Meal Planner (v4)
+# 🍂 Harvest — Household Meal Planner (v5)
 
 Warm, single-theme meal planner with real per-person dietary targeting,
-honest data (no fake gram precision), and per-serving calories from the
-USDA FoodData Central database.
+breakfast/lunch/dinner planning, honest data, and USDA-powered nutrition.
 
 ## Run locally
 ```bash
@@ -12,36 +11,40 @@ python3 -m streamlit run app.py
 ```
 First launch shows onboarding — add your household and set preferences.
 
-## Calories (USDA) — optional but recommended
-Recipes show ~calories per serving, pulled live from the free USDA
-FoodData Central API. Without a key the app still works; calories just show "—".
+## USDA nutrition (optional but recommended)
+Recipe cards show calories + protein/carbs/fat per serving, and the Lookup tab
+lets you check any food. Data comes from the free USDA FoodData Central API.
+Without a key the app still works; nutrition just shows "—".
 
 **Get a free key:** https://fdc.nal.usda.gov/api-key-signup/
-
-**On Streamlit Cloud:** Manage app → Settings → Secrets, paste:
+**Streamlit Cloud:** Manage app → Settings → Secrets, paste:
 ```
 USDA_API_KEY = "your-key"
 ```
 **Locally:** copy `.streamlit/secrets.toml.example` to `.streamlit/secrets.toml`
-and put your key in it. Never commit the real secrets file (`.gitignore` blocks it).
+and add your key. Never commit the real secrets file (`.gitignore` blocks it).
 
-Note: calories are estimates. Weights convert exactly (1 lb → grams); volumes
-(cups, tbsp) are approximate and flagged, since a cup of rice ≠ a cup of spinach.
+Nutrition is estimated. Weights convert exactly (1 lb → grams); volumes (cups,
+tbsp) are approximate, since a cup of rice ≠ a cup of spinach by weight.
 
-## What's in v4
-- **Onboarding first** — no preset members; you build the household.
-- **Clean preferences** — each food type set to Never / Sometimes / Often / Love it,
-  across red meat, poultry, pork, seafood, veg, legumes, pasta. Targets the menu.
-- **Together or Individual** per week — one shared meal, or each person their own dish.
-- **Simple grocery list** — plain item names (you buy by the pack); amounts live
-  on the recipe card only.
-- **Real recipe cards** — amounts, short steps, cook time, and ~calories/serving.
-- **Quick filter** — meals about 20 min or less.
-- **Swap a night** — replace any generated meal from the dropdown.
-- **Add your own recipes** — with amounts, steps, and a type profile; calories
-  auto-calc when you open the card.
-- **Multi-store shared list, receipts + spend, household (non-food) items** — as before.
+## What's new in v5
+- **Breakfast, lunch & dinner** — 63 recipes across all three meals (12/12/39),
+  each with cuisines, cook times, and preference targeting.
+- **Flexible planning grid** — pick how many days (1–7) and which meals to plan;
+  it fills only the slots you choose.
+- **Steer the plan** — a Mood/cuisine filter, Quick-only, and Favorites, applied
+  to the whole generation.
+- **Per-meal re-roll & swap** — don't like one meal? Re-roll just that slot (🎲)
+  or pick a specific replacement, without regenerating everything.
+- **Full macros on cards** — calories, protein, carbs, fat per serving (USDA).
+- **Food Lookup tab** — type any food + grams, get USDA nutrition.
+- **Grocery de-dupe** — an ingredient used across multiple meals appears once.
+- **Custom recipes** — add your own with a meal type, amounts, and steps.
+
+Plus everything from before: per-person Never/Sometimes/Often/Love preferences,
+Together vs. Individual targeting, multi-store shared list, receipts + spend,
+household (non-food) items.
 
 ## Files
 `app.py` UI · `core.py` logic · `db_setup.py` data + schema · `theme.py` warm theme ·
-`usda.py` calorie API · `units.py` amount→grams · `cli.py` optional terminal.
+`usda.py` nutrition API · `units.py` amount→grams · `cli.py` optional terminal.
